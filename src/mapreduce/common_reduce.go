@@ -4,6 +4,13 @@ package mapreduce
 // key/value pairs (produced by the map phase) for this task, sorts the
 // intermediate key/value pairs by key, calls the user-defined reduce function
 // (reduceF) for each key, and writes the output to disk.
+import (
+	"os"
+	"encoding/json"
+	"sort"
+	"fmt"
+	"log"
+)
 func doReduce(
 	jobName string, // the name of the whole MapReduce job
 	reduceTaskNumber int, // which reduce task this is
@@ -43,4 +50,38 @@ func doReduce(
 	// }
 	// file.Close()
 	//
+	kvs := make(map[string][]string)
+	for i := 0; i < nMap; i++ {
+		p := reduceName(jobName, i, reduceTaskNumber)
+		fmt.Printf("Open file : %s\n", p)
+		file, err := os.Open(p)
+		if err != nil {
+			log.Fatal("Open : ", err)
+		}
+		dec := json.NewDecoder(file)
+		for {
+			var kv KeyValue
+			err = dec.Decode(&kv)
+			if (err != nil) {
+				break;
+			}
+			kvs[kv.Key] = append(kvs[kv.Key], kv.Value)
+		}
+		file.Close()
+	}
+	var keys []string
+	for k := range kvs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	output, err := os.Create(mergeName(jobName, reduceTaskNumber))
+	if err != nil {
+		log.Fatal("Create file : ", err)
+	}
+	enc := json.NewEncoder(output)
+	for _, k := range keys {
+		enc.Encode(KeyValue{k, reduceF(k, kvs[k])})
+	}
+	output.Close()
 }
